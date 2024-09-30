@@ -227,7 +227,7 @@ spec:
     name: build
     script: |-
       #!/bin/bash
-      set -e
+      set -e -x
       set -o verbose
       mkdir -p ~/.ssh
       if [ -e "/ssh/error" ]; then
@@ -263,14 +263,14 @@ spec:
           PODMAN_PORT_FORWARD=" -e JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR=localhost"
         fi
 
-        rsync -ra /shared/ "$SSH_HOST:$BUILD_DIR/volumes/shared/"
-        rsync -ra /var/workdir/ "$SSH_HOST:$BUILD_DIR/volumes/workdir/"
-        rsync -ra /entitlement/ "$SSH_HOST:$BUILD_DIR/volumes/etc-pki-entitlement/"
-        rsync -ra /activation-key/ "$SSH_HOST:$BUILD_DIR/volumes/activation-key/"
-        rsync -ra /additional-secret/ "$SSH_HOST:$BUILD_DIR/volumes/additional-secret/"
-        rsync -ra /mnt/trusted-ca/ "$SSH_HOST:$BUILD_DIR/volumes/trusted-ca/"
-        rsync -ra "$HOME/.docker/" "$SSH_HOST:$BUILD_DIR/.docker/"
-        rsync -ra "/tekton/results/" "$SSH_HOST:$BUILD_DIR/results/"
+        rsync -rva /shared/ "$SSH_HOST:$BUILD_DIR/volumes/shared/"
+        rsync -rva /var/workdir/ "$SSH_HOST:$BUILD_DIR/volumes/workdir/"
+        rsync -rva /entitlement/ "$SSH_HOST:$BUILD_DIR/volumes/etc-pki-entitlement/"
+        rsync -rva /activation-key/ "$SSH_HOST:$BUILD_DIR/volumes/activation-key/"
+        rsync -rva /additional-secret/ "$SSH_HOST:$BUILD_DIR/volumes/additional-secret/"
+        rsync -rva /mnt/trusted-ca/ "$SSH_HOST:$BUILD_DIR/volumes/trusted-ca/"
+        rsync -rva "$HOME/.docker/" "$SSH_HOST:$BUILD_DIR/.docker/"
+        rsync -rva "/tekton/results/" "$SSH_HOST:$BUILD_DIR/results/"
       fi
       if [ "${IMAGE_APPEND_PLATFORM}" == "true" ]; then
         IMAGE="${IMAGE}-${PLATFORM//[^a-zA-Z0-9]/-}"
@@ -279,7 +279,8 @@ spec:
 
       cat >scripts/script-build.sh <<'REMOTESSHEOF'
       #!/bin/bash
-      set -e
+      set -e -x
+      cat $HOME/.docker/config.json
       cd /var/workdir
       ca_bundle=/mnt/trusted-ca/ca-bundle.crt
       if [ -f "$ca_bundle" ]; then
@@ -359,7 +360,7 @@ spec:
         BUILDAH_ARGS+=("--pull=never")
         UNSHARE_ARGS="--net"
         for image in $BASE_IMAGES; do
-          unshare -Ufp --keep-caps -r --map-users 1,1,65536 --map-groups 1,1,65536 -- buildah pull $image
+          unshare -Ufp --keep-caps -r --map-users 1,1,65536 --map-groups 1,1,65536 -- buildah --log-level debug pull $image
         done
         echo "Build will be executed with network isolation"
       fi
@@ -487,7 +488,7 @@ spec:
       chmod +x scripts/script-build.sh
 
       if ! [[ $IS_LOCALHOST ]]; then
-        rsync -ra scripts "$SSH_HOST:$BUILD_DIR"
+        rsync -rva scripts "$SSH_HOST:$BUILD_DIR"
         ssh $SSH_ARGS "$SSH_HOST" $PORT_FORWARD podman  run $PODMAN_PORT_FORWARD \
           --tmpfs /run/secrets \
           -e ACTIVATION_KEY="$ACTIVATION_KEY" \
@@ -521,9 +522,9 @@ spec:
           -v "$BUILD_DIR/results/:/tekton/results:Z" \
           -v "$BUILD_DIR/scripts:/scripts:Z" \
           --user=0  --rm  "$BUILDER_IMAGE" /scripts/script-build.sh "$@"
-        rsync -ra "$SSH_HOST:$BUILD_DIR/volumes/shared/" /shared/
-        rsync -ra "$SSH_HOST:$BUILD_DIR/volumes/workdir/" /var/workdir/
-        rsync -ra "$SSH_HOST:$BUILD_DIR/results/" "/tekton/results/"
+        rsync -rva "$SSH_HOST:$BUILD_DIR/volumes/shared/" /shared/
+        rsync -rva "$SSH_HOST:$BUILD_DIR/volumes/workdir/" /var/workdir/
+        rsync -rva "$SSH_HOST:$BUILD_DIR/results/" "/tekton/results/"
         buildah pull "oci:konflux-final-image:$IMAGE"
       else
         bash scripts/script-build.sh "$@"
